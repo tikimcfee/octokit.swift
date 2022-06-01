@@ -13,6 +13,10 @@ class MockURLSessionDataTask: URLSessionDataTaskProtocol {
 }
 
 class OctoKitURLTestSession: RequestKitURLSession {
+    enum AsyncError: Error {
+        case missingResponse
+    }
+    
     var wasCalled: Bool = false
     let expectedURL: String
     let expectedHTTPMethod: String
@@ -68,5 +72,35 @@ class OctoKitURLTestSession: RequestKitURLSession {
         completionHandler(data, response, nil)
         wasCalled = true
         return MockURLSessionDataTask()
+    }
+    
+    func data(for request: URLRequest, delegate: URLSessionTaskDelegate?) async throws -> (Data, URLResponse) {
+        try await withUnsafeThrowingContinuation { continuation in
+            dataTask(with: request, completionHandler: { data, response, error in
+                switch (data, response, error) {
+                case let (.none, .none, .some(error)):
+                    continuation.resume(throwing: error)
+                case let (.some(data), .some(response), .none):
+                    continuation.resume(with: .success((data, response)))
+                default:
+                    continuation.resume(throwing: AsyncError.missingResponse)
+                }
+            }).resume()
+        }
+    }
+    
+    func upload(for request: URLRequest, from bodyData: Data, delegate: URLSessionTaskDelegate?) async throws -> (Data, URLResponse) {
+        try await withUnsafeThrowingContinuation { continuation in
+            uploadTask(with: request, fromData: bodyData, completionHandler: { data, response, error in
+                switch (data, response, error) {
+                case let (.none, .none, .some(error)):
+                    continuation.resume(throwing: error)
+                case let (.some(data), .some(response), .none):
+                    continuation.resume(with: .success((data, response)))
+                default:
+                    continuation.resume(throwing: AsyncError.missingResponse)
+                }
+            }).resume()
+        }
     }
 }
